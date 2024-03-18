@@ -1,11 +1,86 @@
-var builder = WebApplication.CreateBuilder(args);
+using System.Text;
+using hospital_api.DB;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using hospital_api.Controllers;
+using Microsoft.AspNetCore.Identity;
+using hospital_api.Model;
+using NETCore.MailKit.Core;
+using hospital_api.services;
+using System.Configuration;
 
+var builder = WebApplication.CreateBuilder(args);
+//add email config
+
+builder.Services.AddScoped<IEmailSender, EmailSender>();
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.AddDbContext<MyDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("local")));
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+
+
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("MyPolicy", builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+});
+
+//add identity
+
+//configure identity
+builder.Services.AddMemoryCache();
+
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.SignIn.RequireConfirmedEmail = true;
+    options.User.RequireUniqueEmail = true; 
+})
+.AddEntityFrameworkStores<MyDbContext>() 
+.AddDefaultTokenProviders();
+
+
+builder.Services.Configure<IdentityOptions>(options =>
+{
+ options.Password.RequiredLength = 8;
+ options.Password.RequireDigit = true;
+ options.Password.RequireLowercase = true;
+ options.Password.RequireUppercase = true;  
+ options.Password.RequireNonAlphanumeric = false;
+ options.SignIn.RequireConfirmedEmail = true;
+});
+
+//add authentication and jwt
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.SaveToken = true;
+        options.RequireHttpsMetadata = false;
+        options.TokenValidationParameters = new TokenValidationParameters()
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidIssuer = builder.Configuration["JWT:ValidIssuer"],
+            ValidAudience = builder.Configuration["JWT:ValidAudience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Secret"]))
+    };
+    });
+
+
+
 
 var app = builder.Build();
 
@@ -19,7 +94,9 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
-
+app.UseAuthentication();
 app.MapControllers();
+
+app.UseCors("MyPolicy");
 
 app.Run();
