@@ -9,6 +9,7 @@ using hospital_api.Model;
 using NETCore.MailKit.Core;
 using hospital_api.services;
 using System.Configuration;
+using hospital_api.Objects;
 
 var builder = WebApplication.CreateBuilder(args);
 //add email config
@@ -18,10 +19,18 @@ builder.Services.AddScoped<IEmailSender, EmailSender>();
 
 builder.Services.AddControllers();
 builder.Services.AddDbContext<MyDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("local")));
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOrUser", policy =>
+        policy.RequireRole(StaticUserRoles.ADMIN, StaticUserRoles.USER));
+    options.AddPolicy("AdminOrDoctor", policy =>
+        policy.RequireRole(StaticUserRoles.ADMIN, StaticUserRoles.DOCTOR));
+});
 
 
 
@@ -34,13 +43,19 @@ builder.Services.AddCors(options =>
 //add identity
 
 //configure identity
-builder.Services.AddMemoryCache();
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromMinutes(30);
+});
+
+
 
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.SignIn.RequireConfirmedEmail = true;
-    options.User.RequireUniqueEmail = true; 
+    options.User.RequireUniqueEmail = true;
+    options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
 })
 .AddEntityFrameworkStores<MyDbContext>() 
 .AddDefaultTokenProviders();
@@ -73,6 +88,7 @@ builder.Services
         {
             ValidateIssuer = true,
             ValidateAudience = true,
+            ValidateLifetime = true, 
             ValidIssuer = builder.Configuration["JWT:ValidIssuer"],
             ValidAudience = builder.Configuration["JWT:ValidAudience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Secret"]))
@@ -92,9 +108,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-app.UseAuthorization();
 app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.UseCors("MyPolicy");

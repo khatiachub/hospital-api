@@ -9,7 +9,8 @@ namespace hospital_api.Model
 {
     public class UserRegisterModel
     {
-        [Required(ErrorMessage ="Name is required!")]
+        [Required(ErrorMessage = "Name is required!")]
+        [StringLength(50, MinimumLength = 5)]
         public string Name { get; set; }
         [Required(ErrorMessage = "Lastname is required!")]
         public string LastName { get; set; }
@@ -21,6 +22,12 @@ namespace hospital_api.Model
         public string Password { get; set; }
         public bool EmailConfirmed { get; set; } = false;
         public bool TwoFactorEnabled { get; set; } = false;
+        public string Role { get; set; }
+        public string? Category { get; set; }=null;
+        public string? ProfileImage { get; set; } = null;
+        public string? CV { get; set; } = null;
+        public string? Description { get; set; } = null;
+
     }
 
 

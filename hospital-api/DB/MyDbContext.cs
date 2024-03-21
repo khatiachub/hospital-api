@@ -10,6 +10,7 @@ namespace hospital_api.DB
     {
         public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)
         {
+           // Database.Migrate();
         }
 
         //public DbSet<UserRegisterModel> AspNetUsers { get; set; }

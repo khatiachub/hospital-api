@@ -1,8 +1,11 @@
-﻿using System.Globalization;
+﻿using System;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http;
 using System.Runtime.ConstrainedExecution;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using System.Web;
 using Azure;
@@ -26,8 +29,10 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages;
 using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages.Manage;
 using Newtonsoft.Json;
+using NuGet.Common;
 using NuGet.Packaging.Signing;
 using Org.BouncyCastle.Asn1.Pkcs;
+using static System.Net.WebRequestMethods;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 using static Org.BouncyCastle.Crypto.Engines.SM2Engine;
 
@@ -44,18 +49,15 @@ namespace hospital_api.Controllers
         private readonly IConfiguration _configuration;
         private readonly IEmailSender _emailSender;
         private readonly SignInManager<ApplicationUser> _signInManager;
-        private readonly IMemoryCache _memoryCache;
 
 
-        public Authorization(IConfiguration configuration, IMemoryCache memoryCache,
+        public Authorization(IConfiguration configuration,
             RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager, IEmailSender emailSender,SignInManager<ApplicationUser>signInManager)
         {
             this.userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
             _emailSender = emailSender;
-            _signInManager = signInManager;
-            _memoryCache = memoryCache;
         }
 
 
@@ -77,6 +79,10 @@ namespace hospital_api.Controllers
 
         }
 
+       
+
+        //add user
+
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] UserRegisterModel model)
         {
@@ -90,9 +96,14 @@ namespace hospital_api.Controllers
             {
                 Email = model.Email,
                 Name = model.Name,
-                UserName = model.Name,
+                UserName =model.Email,
                 LastName = model.LastName,
-                PrivateNumber = model.PrivateNumber
+                PrivateNumber = model.PrivateNumber,
+                Role=model.Role,
+                Description=model.Description,
+                CV=model.CV,
+                Category=model.Category,
+                SecurityStamp = Guid.NewGuid().ToString(),
             };
 
             var createUser = await userManager.CreateAsync(newUser, model.Password);
@@ -106,23 +117,44 @@ namespace hospital_api.Controllers
                 return BadRequest(errorString);
             }
 
-            DateTime expirationTime = DateTime.Now.AddMinutes(30);
-            string timestamp = expirationTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
-            string Timestamp = timestamp.Replace(":", "%3A");
-            
-            //{Uri.EscapeDataString(token)}
-            string token = await userManager.GenerateEmailConfirmationTokenAsync(newUser);
-            var confirmationLink = $"http://localhost:5134/api/verifyemail/{Uri.EscapeDataString(newUser.Email)}/{Timestamp}";
+            var email = model.Email;
+            string Token = await userManager.GenerateEmailConfirmationTokenAsync(newUser);
+            var confirmationLink = $"http://localhost:5134/api/VerifyEmail/token={HttpUtility.UrlEncode(Token)}/email={HttpUtility.UrlEncode(email)}";
             var request = new EmailConfiguration()
             {
                 To = model.Email,
                 Subject = "Verify Email",
                 Body = confirmationLink
-
             };
-            await userManager.AddToRoleAsync(newUser, StaticUserRoles.USER);
+            await userManager.AddToRoleAsync(newUser,StaticUserRoles.ADMIN);
             await _emailSender.SendEmailAsync(request);
-            return Ok("Email sent successfully");
+           
+
+            return Created("Registration","verification link is sent");
+        }
+        //add admin doctor user
+        [HttpPost("AddUsersByRoles")]
+        [Authorize(Roles = StaticUserRoles.ADMIN)]
+        public async Task<IActionResult> AddAdmin([FromBody] UserRegisterModel model)
+        {
+            var result = await Register(model);
+
+            if (result!=null)
+            {
+                var user = await userManager.FindByEmailAsync(model.Email);
+                var existingRoles = await userManager.GetRolesAsync(user);
+                foreach (var role in existingRoles)
+                {
+                    await userManager.RemoveFromRoleAsync(user, role);
+                }
+                await userManager.AddToRoleAsync(user, model.Role);
+                return Ok("{User registered successfully, verify email");
+            }
+            else
+            {
+                return BadRequest("User registration failed.");
+            }
+
         }
 
         //login
@@ -133,7 +165,7 @@ namespace hospital_api.Controllers
             var user = await userManager.FindByEmailAsync(model.Email);
             if (user == null)
             {
-                return Unauthorized("Invalid credentials");
+                return Unauthorized("Invalid email");
             }
             var isPasswordCorrect = await userManager.CheckPasswordAsync(user, model.Password);
             if (!isPasswordCorrect)
@@ -154,56 +186,162 @@ namespace hospital_api.Controllers
             var token = GenerateNewJsonWebToken(authClaims);
             if (!user.EmailConfirmed)
             {
-                return Unauthorized("please verify email");
+                var email = user.Email;
+                string Token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+                var confirmationLink = $"http://localhost:5134/api/VerifyEmail/token={HttpUtility.UrlEncode(Token)}/email={HttpUtility.UrlEncode(email)}";
+                var request = new EmailConfiguration()
+                {
+                    To = model.Email,
+                    Subject = "Verify Email",
+                    Body = confirmationLink
+                };
+                await _emailSender.SendEmailAsync(request);
+               
+               return Unauthorized("please verify email,verification link is sent");
             }
             if (await userManager.GetTwoFactorEnabledAsync(user))
             {
                 string randomCode = GenerateRandomCode();
                 DateTime expirationTime = DateTime.Now.AddMinutes(5);
-                // await _signInManager.SignOutAsync();
                 var request = new EmailConfiguration()
                 {
                     To = model.Email,
                     Subject = "2-step verification code",
-                    Body = $"Your verification code is: {randomCode}. It will expire at {expirationTime}."
+                    Body = randomCode
                 };
                 await _emailSender.SendEmailAsync(request);
-                _memoryCache.Set("VerificationEmail", model.Email);
-                _memoryCache.Set("code", randomCode,expirationTime);
-                return Ok("Verification code sent. Please check your email.");
+              
+                return Ok( new {Email=model.Email,Time=expirationTime,Code=randomCode});
             }
             else
             {
                 return Ok(token);
             }
         }
-        
+    
+
+
+        // recover password
+        [HttpPost("recoverpassword")]
+        public async Task<IActionResult> RecoverPassword(CodeModel model)
+        {
+            if (model.Email == null)
+            {
+                return BadRequest("please enter email");
+            }
+           
+                var user =await userManager.FindByEmailAsync(model.Email);
+                if (user==null)
+                {
+                    return Unauthorized("your email is not registered");
+                }
+                else
+                {
+                    string randomCode = GenerateRandomCode();
+                    DateTime expirationTime = DateTime.Now.AddMinutes(5);
+                    var request = new EmailConfiguration()
+                    {
+                        To = model.Email,
+                        Subject = "2-step verification code",
+                        Body = randomCode
+                    };
+                    await _emailSender.SendEmailAsync(request);
+                var data = new CodeModel()
+                {
+                    Time = expirationTime,
+                    Code = randomCode,
+                    Email = model.Email
+                };
+                    return Ok(data);
+                }
+        }
+      
+
+        //enter recover code
+        [HttpPost("enter-password-recovery-code")]
+        public async Task<IActionResult> EnterRecoveryCode(CodeModel model)
+        {
+            var user = await userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+            {
+                return BadRequest("invalid login attemp");
+            }
+            if ((DateTime.Now - model.Time).TotalMinutes >= 5)
+            {
+                return BadRequest("Code has expired");
+            }
+
+            if (model.Code == model.NewCode)
+            {
+                var token= await userManager.GeneratePasswordResetTokenAsync(user);
+                var data = new CodeModel()
+                {
+                    Email = model.Email,
+                    Token = token
+                };
+                return Ok(data);
+            }
+            else
+            {
+                return BadRequest("code is invalid");
+            }
+        }
+       
+
+        //enter new password
+        [HttpPost("enter-new-password")]
+        public async Task<IActionResult> EnterNewPassword(RecoverPassword model)
+        {
+            var user = await userManager.FindByEmailAsync(model.Email);
+            if (user != null)
+            {
+                if (model.NewPassword == model.ConfirmPassword)
+                {
+                    var result = await userManager.ResetPasswordAsync(user,model.Token, model.NewPassword);
+                    if (result.Succeeded)
+                    {
+                        return Ok(user);
+                    }
+                    else
+                    {
+                        return Unauthorized("you are not allowed to reset password");
+                    }
+                }
+                else
+                {
+                    return BadRequest("passwords dont match");
+                }
+            }
+            else
+            {
+                return Unauthorized("user not found");
+            }
+        }
+
+
+
+
+
 
 
         // enter code
         [HttpPost("Auth-Code")]
         //[AllowAnonymous]
-        public async Task<IActionResult> VerifyCode(CodeModel model, [FromServices] IMemoryCache memoryCache)
+        public async Task<IActionResult> VerifyCode(CodeModel model)
         {
-
-            if (!memoryCache.TryGetValue("VerificationEmail", out string email))
-            {
-                return BadRequest("Email is missing in the cache");
-            }
-            var user = await userManager.FindByEmailAsync(email);
+            var user = await userManager.FindByEmailAsync(model.Email);
             if (user == null)
             {
                 ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
                 return BadRequest("invald login attemp");
             }
-
-            if (!memoryCache.TryGetValue("code",out string code))
+            if ((DateTime.Now - model.Time).TotalMinutes >= 5)
             {
-                return BadRequest("code is required");
+                return BadRequest("Code has expired");
             }
             else
             {
-                if (code == model.Code)
+                if (model.NewCode == model.Code)
                 {
                 var userRoles = await userManager.GetRolesAsync(user);
                 var authClaims = new List<Claim>
@@ -249,7 +387,7 @@ namespace hospital_api.Controllers
             var tokenObject = new JwtSecurityToken(
                 issuer: _configuration["JWT:ValidIssuer"],
                 audience: _configuration["JWT:ValidAudience"],
-                expires: DateTime.MaxValue,
+                expires: DateTime.Now.AddHours(1),
                 claims: claims,
                 signingCredentials: new SigningCredentials(authSecret, SecurityAlgorithms.HmacSha256)
             );
@@ -257,30 +395,58 @@ namespace hospital_api.Controllers
             return token;
         }
 
+        private static string DecodeUrlString(string url)
+        {
+            string newUrl;
+            while ((newUrl = Uri.UnescapeDataString(url)) != url)
+                url = newUrl;
+            return newUrl;
+        }
 
         //verify email
-        [HttpGet("verifyemail/{email}/{Timestamp}")]
-        public async Task<IActionResult> VerifyEmail(string email, string Timestamp)
+        [HttpGet("VerifyEmail/token={Token}/email={email}")]
+        public async Task<IActionResult> VerifyEmail(string email,string Token)
         {
-            var user = await userManager.FindByEmailAsync(email);
-            DateTime timestampString = DateTime.ParseExact(Timestamp, "yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-            DateTime currentTime = DateTime.Now;
-            if (user == null)
+
+            var decodedEmail=DecodeUrlString(email);
+            var decodedToken = DecodeUrlString(Token);
+
+
+            var user = await userManager.FindByEmailAsync(decodedEmail);
+          
+            if (user != null)
             {
-                return BadRequest("User not found");
-            }
-            else if ((currentTime - timestampString).TotalMinutes > 30)
-            {
-                return BadRequest("Link is expired");
+                var result = await userManager.ConfirmEmailAsync(user, decodedToken);
+                if (result.Succeeded)
+                {
+                   
+                    return Ok("Email Verified Successfully");
+                }
+                
+                else
+                {
+                    return BadRequest("Link has expired");
+                }
             }
             else
             {
-                user.EmailConfirmed = true;
-                
-                await userManager.UpdateAsync(user);
-                return Ok("Email verified successfully");
+                return BadRequest("user not found");
             }
+            
+            
         }
+
+        // turn on 2step-authorization
+        [HttpGet("2-step")]
+        [Authorize(Roles = StaticUserRoles.USER)]
+        public async Task<IActionResult> Twostep()
+        {
+            return Ok("gooooooooood");
+        }
+
+
+
+
 
         // turn on 2step-authorization
         [HttpGet("2-step-authorization/{id}")]
