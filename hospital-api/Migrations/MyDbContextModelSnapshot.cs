@@ -213,8 +213,10 @@ namespace hospitalapi.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("bit");
 
-                    b.Property<int?>("PrivateNumber")
-                        .HasColumnType("int");
+                    b.Property<string>("PrivateNumber")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
 
                     b.Property<string>("ProfileImage")
                         .HasColumnType("nvarchar(max)");

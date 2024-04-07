@@ -12,7 +12,7 @@ using hospital_api.DB;
 namespace hospitalapi.Migrations
 {
     [DbContext(typeof(MyDbContext))]
-    [Migration("20240320115102_db")]
+    [Migration("20240331175717_db")]
     partial class db
     {
         /// <inheritdoc />
@@ -216,8 +216,10 @@ namespace hospitalapi.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("bit");
 
-                    b.Property<int?>("PrivateNumber")
-                        .HasColumnType("int");
+                    b.Property<string>("PrivateNumber")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
 
                     b.Property<string>("ProfileImage")
                         .HasColumnType("nvarchar(max)");

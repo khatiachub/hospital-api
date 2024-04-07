@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Drawing;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http;
@@ -20,10 +21,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.DotNet.Scaffolding.Shared.Messaging;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Identity.Client;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages;
@@ -49,15 +55,17 @@ namespace hospital_api.Controllers
         private readonly IConfiguration _configuration;
         private readonly IEmailSender _emailSender;
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly IWebHostEnvironment _environment;
 
 
-        public Authorization(IConfiguration configuration,
+        public Authorization(IConfiguration configuration, IWebHostEnvironment environment,
             RoleManager<IdentityRole> roleManager, UserManager<ApplicationUser> userManager, IEmailSender emailSender,SignInManager<ApplicationUser>signInManager)
         {
             this.userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
             _emailSender = emailSender;
+            _environment = environment;
         }
 
 
@@ -79,12 +87,12 @@ namespace hospital_api.Controllers
 
         }
 
-       
+        
 
         //add user
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] UserRegisterModel model)
+        public async Task<IActionResult> Register([FromForm] UserRegisterModel model )
         {
             var isExistUser = await userManager.FindByEmailAsync(model.Email);
             if (isExistUser != null)
@@ -92,19 +100,23 @@ namespace hospital_api.Controllers
                 return BadRequest("Email is already registered!");
             }
 
+            var (profileImage, cv) = await WriteFiles(model.ProfileImage, model.CV);
+
             var newUser = new ApplicationUser()
             {
                 Email = model.Email,
                 Name = model.Name,
-                UserName =model.Email,
+                UserName = model.Email,
                 LastName = model.LastName,
                 PrivateNumber = model.PrivateNumber,
-                Role=model.Role,
-                Description=model.Description,
-                CV=model.CV,
-                Category=model.Category,
+                Role = model.Role,
+                Description = model.Description,
+                ProfileImage = profileImage,
+                CV=cv,
+                Category = model.Category,
                 SecurityStamp = Guid.NewGuid().ToString(),
             };
+
 
             var createUser = await userManager.CreateAsync(newUser, model.Password);
             if (!createUser.Succeeded)
@@ -119,23 +131,28 @@ namespace hospital_api.Controllers
 
             var email = model.Email;
             string Token = await userManager.GenerateEmailConfirmationTokenAsync(newUser);
-            var confirmationLink = $"http://localhost:5134/api/VerifyEmail/token={HttpUtility.UrlEncode(Token)}/email={HttpUtility.UrlEncode(email)}";
+            var confirmationLink = $"http://localhost:4200/api/VerifyEmail/{HttpUtility.UrlEncode(Token)}/{HttpUtility.UrlEncode(email)}";
             var request = new EmailConfiguration()
             {
                 To = model.Email,
                 Subject = "Verify Email",
                 Body = confirmationLink
             };
-            await userManager.AddToRoleAsync(newUser,StaticUserRoles.ADMIN);
+            await userManager.AddToRoleAsync(newUser,model.Role);
             await _emailSender.SendEmailAsync(request);
            
 
-            return Created("Registration","verification link is sent");
+            return Ok(newUser);
         }
+
+      
+
+
         //add admin doctor user
         [HttpPost("AddUsersByRoles")]
+        
         [Authorize(Roles = StaticUserRoles.ADMIN)]
-        public async Task<IActionResult> AddAdmin([FromBody] UserRegisterModel model)
+        public async Task<IActionResult> AddAdmin([FromForm] UserRegisterModel model)
         {
             var result = await Register(model);
 
@@ -148,14 +165,83 @@ namespace hospital_api.Controllers
                     await userManager.RemoveFromRoleAsync(user, role);
                 }
                 await userManager.AddToRoleAsync(user, model.Role);
-                return Ok("{User registered successfully, verify email");
+                return Ok(user);
             }
             else
             {
                 return BadRequest("User registration failed.");
             }
-
         }
+
+
+
+
+        private async Task<(string ProfileImage, string CV)> WriteFiles(IFormFile profileImage, IFormFile cv)
+        {
+            string profileImageFilename = "";
+            string cvFilename = "";
+            try
+            {
+                if (profileImage != null)
+                {
+                    var profileImageExtension = "." + profileImage.FileName.Split('.')[profileImage.FileName.Split('.').Length - 1];
+                    profileImageFilename = DateTime.Now.Ticks.ToString() + profileImageExtension;
+
+                    var profileImageFilepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files");
+
+                    if (!Directory.Exists(profileImageFilepath))
+                    {
+                        Directory.CreateDirectory(profileImageFilepath);
+                    }
+
+                    var profileImageExactpath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", profileImageFilename);
+                    using (var profileImageStream = new FileStream(profileImageExactpath, FileMode.Create))
+                    {
+                        await profileImage.CopyToAsync(profileImageStream);
+                    }
+                }
+
+                if (cv != null)
+                {
+                    var cvExtension = "." + cv.FileName.Split('.')[cv.FileName.Split('.').Length - 1];
+                    cvFilename = DateTime.Now.Ticks.ToString() + cvExtension;
+
+                    var cvFilepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files");
+
+                    if (!Directory.Exists(cvFilepath))
+                    {
+                        Directory.CreateDirectory(cvFilepath);
+                    }
+
+                    var cvExactpath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", cvFilename);
+                    using (var cvStream = new FileStream(cvExactpath, FileMode.Create))
+                    {
+                        await cv.CopyToAsync(cvStream);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions
+            }
+            return (profileImageFilename, cvFilename);
+        }
+
+        [HttpGet]
+        [Route("DownloadFile/{filename}")]
+        public async Task<IActionResult> DownloadFile(string filename)
+        {
+            var filepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", filename);
+
+            // Read file content as bytes
+            var bytes = await System.IO.File.ReadAllBytesAsync(filepath);
+
+            // Return file content in response body
+            return File(bytes, "application/pdf", filename);
+        }
+
+
+
 
         //login
         [HttpPost("login")]
@@ -188,7 +274,7 @@ namespace hospital_api.Controllers
             {
                 var email = user.Email;
                 string Token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-                var confirmationLink = $"http://localhost:5134/api/VerifyEmail/token={HttpUtility.UrlEncode(Token)}/email={HttpUtility.UrlEncode(email)}";
+                var confirmationLink = $"http://localhost:4200/api/VerifyEmail/{HttpUtility.UrlEncode(Token)}/{HttpUtility.UrlEncode(email)}";
                 var request = new EmailConfiguration()
                 {
                     To = model.Email,
@@ -215,14 +301,116 @@ namespace hospital_api.Controllers
             }
             else
             {
-                return Ok(token);
+                return Ok(new { token = token, id=user.Id});
             }
         }
-    
+
+        //change email
+        [HttpPost("sendemailchangecodetoemail/{Id}")]
+        [Authorize]
+
+        public async Task<IActionResult> SendCodeToEmail(string Id, [FromBody] CodeModel model)
+        {
+            var user = await userManager.FindByIdAsync(Id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+            string randomCode = GenerateRandomCode();
+            var request = new EmailConfiguration()
+            {
+                To = model.Email,
+                Subject = "Email change verification code",
+                Body = randomCode
+            };
+            await _emailSender.SendEmailAsync(request);
+            return Ok(new { randomeCode=randomCode });
+        }
 
 
-        // recover password
-        [HttpPost("recoverpassword")]
+        [HttpPost("enteremailchangecode/{Id}")]
+        [Authorize]
+
+        public async Task<bool> EnterEmailChangeCode(string Id, [FromBody] CodeModel model)
+        {
+            var user = await userManager.FindByIdAsync(Id);
+            if (user == null)
+            {
+                return false;
+            }
+            if (model.Code == model.NewCode)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        [HttpPost("enternewemail/{Id}")]
+        [Authorize]
+
+        public async Task<IActionResult> EnterNewEmail(string Id, [FromBody] CodeModel model)
+        {
+            var user = await userManager.FindByIdAsync(Id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            string randomCode = GenerateRandomCode();
+            var request = new EmailConfiguration()
+            {
+                To = model.Email,
+                Subject = "Email change verification code",
+                Body = randomCode
+            };
+            await _emailSender.SendEmailAsync(request);
+            return Ok(new {email=model.Email,randomeCode = randomCode });
+        }
+
+        [HttpPost("changeemail/{Id}")]
+        [Authorize]
+
+        public async Task<IActionResult> ChangeEmail(string Id, [FromBody] CodeModel model)
+        {
+            var user = await userManager.FindByIdAsync(Id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+            if (model.Code==model.NewCode)
+            {
+                var token = await userManager.GenerateChangeEmailTokenAsync(user, model.Email);
+                var result = await userManager.ChangeEmailAsync(user, model.Email, token);
+                user.UserName = model.Email;
+                await userManager.UpdateAsync(user);
+
+                if (result.Succeeded)
+                {
+                    return Ok(new { result = "Email updated successfully" });
+                }
+                else
+                {
+                    return BadRequest(result.Errors);
+                }
+            }
+            else
+            {
+                return BadRequest(new { Message = "you are not allowed to change email" });
+            }
+        }
+        
+
+
+
+
+
+
+
+
+            // recover password
+            [HttpPost("recoverpassword")]
         public async Task<IActionResult> RecoverPassword(CodeModel model)
         {
             if (model.Email == null)
@@ -242,7 +430,7 @@ namespace hospital_api.Controllers
                     var request = new EmailConfiguration()
                     {
                         To = model.Email,
-                        Subject = "2-step verification code",
+                        Subject = "Password recovery code",
                         Body = randomCode
                     };
                     await _emailSender.SendEmailAsync(request);
@@ -326,7 +514,6 @@ namespace hospital_api.Controllers
 
         // enter code
         [HttpPost("Auth-Code")]
-        //[AllowAnonymous]
         public async Task<IActionResult> VerifyCode(CodeModel model)
         {
             var user = await userManager.FindByEmailAsync(model.Email);
@@ -355,7 +542,7 @@ namespace hospital_api.Controllers
                         authClaims.Add(new Claim(ClaimTypes.Role, userRole));
                     }
                     var token = GenerateNewJsonWebToken(authClaims);
-                    return Ok(token);
+                    return Ok(new {token=token,id=user.Id});
                 }
                 else
                 {
@@ -387,7 +574,7 @@ namespace hospital_api.Controllers
             var tokenObject = new JwtSecurityToken(
                 issuer: _configuration["JWT:ValidIssuer"],
                 audience: _configuration["JWT:ValidAudience"],
-                expires: DateTime.Now.AddHours(1),
+                expires: DateTime.MaxValue,
                 claims: claims,
                 signingCredentials: new SigningCredentials(authSecret, SecurityAlgorithms.HmacSha256)
             );
@@ -404,23 +591,34 @@ namespace hospital_api.Controllers
         }
 
         //verify email
-        [HttpGet("VerifyEmail/token={Token}/email={email}")]
-        public async Task<IActionResult> VerifyEmail(string email,string Token)
+        [HttpGet("VerifyEmail/{Token}/{email}")]
+        public async Task<IActionResult> VerifyEmail(string email, string Token)
         {
 
-            var decodedEmail=DecodeUrlString(email);
+            var decodedEmail = DecodeUrlString(email);
             var decodedToken = DecodeUrlString(Token);
-
-
             var user = await userManager.FindByEmailAsync(decodedEmail);
-          
+            var userRoles = await userManager.GetRolesAsync(user);
+            var authClaims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Email,user.Email),
+                new Claim(ClaimTypes.NameIdentifier,user.Id),
+                new Claim("JWTID",Guid.NewGuid().ToString()),
+            };
+            foreach (var userRole in userRoles)
+            {
+                authClaims.Add(new Claim(ClaimTypes.Role, userRole));
+            }
+            var token = GenerateNewJsonWebToken(authClaims);
+
+
             if (user != null)
             {
                 var result = await userManager.ConfirmEmailAsync(user, decodedToken);
                 if (result.Succeeded)
                 {
                    
-                    return Ok("Email Verified Successfully");
+                    return Ok(new {result= "Email Verified Successfully" ,user=user,jwtToken=token});
                 }
                 
                 else
@@ -431,26 +629,14 @@ namespace hospital_api.Controllers
             else
             {
                 return BadRequest("user not found");
-            }
-            
-            
+            }  
         }
-
-        // turn on 2step-authorization
-        [HttpGet("2-step")]
-        [Authorize(Roles = StaticUserRoles.USER)]
-        public async Task<IActionResult> Twostep()
-        {
-            return Ok("gooooooooood");
-        }
-
-
 
 
 
         // turn on 2step-authorization
         [HttpGet("2-step-authorization/{id}")]
-        [Authorize(Roles =StaticUserRoles.USER)]
+        [Authorize]
         
         public async Task<IActionResult> TwostepAuthentication(string Id)
         {
@@ -467,11 +653,12 @@ namespace hospital_api.Controllers
                     var result = await userManager.SetTwoFactorEnabledAsync(user, true);
                     if (result.Succeeded)
                     {
-                        return Ok("two step authorization is on");
+                        return Ok(new {result = "two step authorization is on" });
+
                     }
                     else
                     {
-                        return Ok("Failed to  two-step authorization");
+                        return BadRequest("Failed to  two-step authorization");
                     }
                 }
                 else
@@ -479,7 +666,7 @@ namespace hospital_api.Controllers
                     var result = await userManager.SetTwoFactorEnabledAsync(user, false);
                     if (result.Succeeded)
                     {
-                        return Ok("Two-step authorization is off");
+                        return Ok(new { result = "two step authorization is off" });
                     }
                     else
                     {

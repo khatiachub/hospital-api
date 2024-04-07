@@ -11,6 +11,17 @@ using hospital_api.services;
 using System.Configuration;
 using hospital_api.Objects;
 
+
+
+
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.FileProviders;
+
+
+
+
 var builder = WebApplication.CreateBuilder(args);
 //add email config
 
@@ -33,12 +44,18 @@ builder.Services.AddAuthorization(options =>
 });
 
 
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = int.MaxValue;
+    options.ValueLengthLimit = int.MaxValue;
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("MyPolicy", builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
+
 
 //add identity
 
@@ -98,7 +115,17 @@ builder.Services
 
 
 
+
 var app = builder.Build();
+app.UseStaticFiles();
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+                Path.Combine(Directory.GetCurrentDirectory(), "Upload", "Files")),
+    RequestPath = "/Upload/Files",
+   
+});
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -107,11 +134,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
+app.UseCors("MyPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-app.UseCors("MyPolicy");
-
 app.Run();
