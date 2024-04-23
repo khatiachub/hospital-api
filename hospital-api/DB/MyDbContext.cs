@@ -6,7 +6,7 @@ using System.Security.Claims;
 
 namespace hospital_api.DB
 {
-        public class MyDbContext : IdentityDbContext<ApplicationUser, IdentityRole<string>, string>
+        public class MyDbContext : IdentityDbContext <ApplicationUser>
 
     {
         public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)

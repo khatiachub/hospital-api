@@ -267,9 +267,9 @@ namespace hospital_api.Controllers
             var userRoles = await userManager.GetRolesAsync(user);
             var authClaims = new List<Claim>
             {
-                new (ClaimTypes.Email,user.Email),
-                new (ClaimTypes.NameIdentifier,user.Id),
-                new ("JWTID",Guid.NewGuid().ToString()),
+                new Claim(ClaimTypes.Email,user.Email),
+                new Claim(ClaimTypes.NameIdentifier,user.Id),
+                new Claim("JWTID",Guid.NewGuid().ToString()),
             };
             foreach (var userRole in userRoles)
             {
