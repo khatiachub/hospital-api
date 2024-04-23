@@ -11,18 +11,6 @@ using hospital_api.services;
 using System.Configuration;
 using hospital_api.Objects;
 
-
-
-
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
-using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.FileProviders;
-using System.Reflection.Emit;
-
-
-
-
 var builder = WebApplication.CreateBuilder(args);
 //add email config
 
@@ -118,18 +106,6 @@ builder.Services
 
 
 var app = builder.Build();
-app.UseStaticFiles();
-app.UseDefaultFiles();
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(
-                Path.Combine(Directory.GetCurrentDirectory(), "Upload", "Files")),
-    RequestPath = "/Upload/Files",
-   
-});
-
-
-
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
