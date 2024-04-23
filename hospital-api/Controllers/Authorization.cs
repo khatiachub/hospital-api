@@ -163,8 +163,91 @@ namespace hospital_api.Controllers
             {
                 return BadRequest("User registration failed.");
             }
-
         }
+
+
+
+
+        private async Task<(string ProfileImage, string CV)> WriteFiles(IFormFile profileImage, IFormFile cv)
+        {
+            string profileImageFilename = "";
+            string cvFilename = "";
+            try
+            {
+                if (profileImage != null)
+                {
+                    var profileImageExtension = "." + profileImage.FileName.Split('.')[profileImage.FileName.Split('.').Length - 1];
+                    profileImageFilename = DateTime.Now.Ticks.ToString() + profileImageExtension;
+
+                    var profileImageFilepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files");
+
+                    if (!Directory.Exists(profileImageFilepath))
+                    {
+                        Directory.CreateDirectory(profileImageFilepath);
+                    }
+
+                    var profileImageExactpath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", profileImageFilename);
+                    using (var profileImageStream = new FileStream(profileImageExactpath, FileMode.Create))
+                    {
+                        await profileImage.CopyToAsync(profileImageStream);
+                    }
+                }
+
+                if (cv != null)
+                {
+                    var cvExtension = "." + cv.FileName.Split('.')[cv.FileName.Split('.').Length - 1];
+                    cvFilename = DateTime.Now.Ticks.ToString() + cvExtension;
+
+                    var cvFilepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files");
+
+                    if (!Directory.Exists(cvFilepath))
+                    {
+                        Directory.CreateDirectory(cvFilepath);
+                    }
+
+                    var cvExactpath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", cvFilename);
+                    using (var cvStream = new FileStream(cvExactpath, FileMode.Create))
+                    {
+                        await cv.CopyToAsync(cvStream);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
+            }
+            return (profileImageFilename, cvFilename);
+        }
+
+        [HttpGet]
+        [Route("DownloadFile/{filename}")]
+        public async Task<IActionResult> DownloadFile(string filename)
+        {
+            var filepath = Path.Combine(Directory.GetCurrentDirectory(), "Upload\\Files", filename);
+            var fileExtension = Path.GetExtension(filepath).ToLower();
+
+            string contentType;
+            switch (fileExtension)
+            {
+                case ".pdf":
+                    contentType = "application/pdf";
+                    break;
+                case ".doc":
+                case ".docx":
+                    contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    break;
+                default:
+                    return NotFound();
+            }
+
+            var bytes = await System.IO.File.ReadAllBytesAsync(filepath);
+            return File(bytes, contentType, filename);
+        }
+
+
+
+
+
 
         //login
         [HttpPost("login")]
@@ -184,9 +267,9 @@ namespace hospital_api.Controllers
             var userRoles = await userManager.GetRolesAsync(user);
             var authClaims = new List<Claim>
             {
-                new Claim(ClaimTypes.Email,user.Email),
-                new Claim(ClaimTypes.NameIdentifier,user.Id),
-                new Claim("JWTID",Guid.NewGuid().ToString()),
+                new (ClaimTypes.Email,user.Email),
+                new (ClaimTypes.NameIdentifier,user.Id),
+                new ("JWTID",Guid.NewGuid().ToString()),
             };
             foreach (var userRole in userRoles)
             {
@@ -220,11 +303,11 @@ namespace hospital_api.Controllers
                 };
                 await _emailSender.SendEmailAsync(request);
 
-                return Ok( new {Email=model.Email,Time= expirationTime, Code=randomCode});
+                return Ok( new {Mail=model.Email, Time = expirationTime, Code = randomCode });
             }
             else
             {
-                return Ok(new { token = token, id=user.Id, role=user.Role});
+                return Ok(new { Token=token, id=user.Id, role=user.Role});
             }
         }
 
@@ -320,7 +403,7 @@ namespace hospital_api.Controllers
             }
             else
             {
-                return Ok(token);
+                return BadRequest(new { Message = "you are not allowed to change email" });
             }
         }
         
@@ -457,16 +540,16 @@ namespace hospital_api.Controllers
                 var userRoles = await userManager.GetRolesAsync(user);
                 var authClaims = new List<Claim>
                 {
-                new Claim(ClaimTypes.Email,user.Email),
-                new Claim(ClaimTypes.NameIdentifier,user.Id),
-                new Claim("JWTID",Guid.NewGuid().ToString()),
+                new(ClaimTypes.Email,user.Email),
+                new(ClaimTypes.NameIdentifier,user.Id),
+                new("JWTID",Guid.NewGuid().ToString()),
                 };
                     foreach (var userRole in userRoles)
                     {
                         authClaims.Add(new Claim(ClaimTypes.Role, userRole));
                     }
                     var token = GenerateNewJsonWebToken(authClaims);
-                    return Ok(new {token=token,id=user.Id});
+                    return Ok(new {Token = token, id = user.Id });
                 }
                 else
                 {

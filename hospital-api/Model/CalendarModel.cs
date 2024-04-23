@@ -32,7 +32,6 @@ namespace hospital_api.Model
         public int calendarModelId { get; set; }
 
     }
-
 }
 
 

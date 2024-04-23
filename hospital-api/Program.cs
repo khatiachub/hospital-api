@@ -33,11 +33,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 
-builder.Services.Configure<FormOptions>(options =>
-{
-    options.MultipartBodyLengthLimit = int.MaxValue;
-    options.ValueLengthLimit = int.MaxValue;
-});
+
 
 // Add CORS
 builder.Services.AddCors(options =>
