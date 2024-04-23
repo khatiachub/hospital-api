@@ -10,6 +10,10 @@ using NETCore.MailKit.Core;
 using hospital_api.services;
 using System.Configuration;
 using hospital_api.Objects;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.FileProviders;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 //add email config
@@ -33,7 +37,11 @@ builder.Services.AddAuthorization(options =>
 });
 
 
-
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = int.MaxValue;
+    options.ValueLengthLimit = int.MaxValue;
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -101,6 +109,8 @@ builder.Services
 
 
 
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -109,6 +119,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "Upload", "Files")),
+    RequestPath = "/Upload/Files"
+});
+
 
 //app.UseHttpsRedirection();
 app.UseCors("MyPolicy");
