@@ -11,19 +11,10 @@ namespace hospital_api.DB
     {
         public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)
         {
-            //Database.Migrate();
+           // Database.Migrate();
         }
 
-        public DbSet<CalendarModel> Calendar { get; set; }
-        public DbSet<CategoriesModel> Categories { get; set; }
-
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-
-            
-        }
+        //public DbSet<UserRegisterModel> AspNetUsers { get; set; }
 
     }
 
