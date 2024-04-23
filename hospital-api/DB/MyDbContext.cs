@@ -12,7 +12,7 @@ namespace hospital_api.DB
         public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)
         {
 
-
+        }
         public DbSet<CalendarModel> Calendar { get; set; }
         public DbSet<CategoriesModel> Categories { get; set; }
 
