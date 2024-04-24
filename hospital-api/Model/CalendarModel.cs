@@ -16,9 +16,7 @@ namespace hospital_api.Model
             public DateTime? endDate { get; set; }
             public string? title { get; set; }
             public bool? isBooked { get; set; }
-            public string? color { get; set; }
-            public ICollection<Event>? Events { get; set; }
-        
+            public ICollection<Event>? Events { get; set; }        
     }
     public class Event
     {

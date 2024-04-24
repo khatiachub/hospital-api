@@ -15,6 +15,7 @@ namespace hospital_api.DB
         }
         public DbSet<CalendarModel> Calendar { get; set; }
         public DbSet<CategoriesModel> Categories { get; set; }
+        public DbSet<SelectedDayModel> SelectedDay { get; set; }
 
 
 

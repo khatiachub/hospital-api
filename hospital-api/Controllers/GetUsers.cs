@@ -396,5 +396,40 @@ namespace hospital_api.Controllers
             return NoContent();
         }
 
+        [HttpPost("SelectedDay")]
+        //[Authorize(Roles = StaticUserRoles.ADMIN)]
+        public async Task<IActionResult> AddSelectedDay([FromBody] SelectedDayModel model)
+        {
+            try
+            {
+                _dbContext.Add(model);
+                await _dbContext.SaveChangesAsync();
+                return Ok(model);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+
+
+
+        [HttpGet("SelectedDay")]
+        public async Task<IActionResult> GetSelectedDay()
+        {
+            var categories = _dbContext.SelectedDay.ToList();
+            return Ok(categories);
+
+        }
+        [HttpDelete("DeleteSelectedDay/{Id}")]
+        [Authorize(Roles = StaticUserRoles.ADMIN)]
+        public async Task<IActionResult> DeleteSelectedDay(int Id)
+        {
+            var categories = _dbContext.SelectedDay.Find(Id);
+            _dbContext.SelectedDay.Remove(categories);
+            _dbContext.SaveChanges();
+            return Ok();
+        }
     }
 }
