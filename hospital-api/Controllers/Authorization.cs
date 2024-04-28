@@ -303,7 +303,7 @@ namespace hospital_api.Controllers
                 };
                 await _emailSender.SendEmailAsync(request);
 
-                return Ok( new {Mail=model.Email, Time = expirationTime, Code = randomCode });
+                return Ok( new {Email=model.Email, Time = expirationTime, Code = randomCode });
             }
             else
             {
@@ -529,7 +529,7 @@ namespace hospital_api.Controllers
                 ModelState.AddModelError(string.Empty, "Invalid Login Attempt.");
                 return BadRequest("invald login attemp");
             }
-            if (DateTime.Now >= model.Time)
+            if (DateTime.Now > model.Time)
             {
                 return BadRequest("Code has expired");
             }
