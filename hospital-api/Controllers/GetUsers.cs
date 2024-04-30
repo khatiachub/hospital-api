@@ -169,7 +169,7 @@ namespace hospital_api.Controllers
 
         //get by roles
         [HttpGet("GetByRoles/{Role}")]
-       // [Authorize(Roles = StaticUserRoles.ADMIN)]
+        [Authorize(Roles = StaticUserRoles.ADMIN)]
 
 
         public async Task<IActionResult> GetByRole(string Role)
