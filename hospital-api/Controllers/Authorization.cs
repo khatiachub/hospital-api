@@ -640,9 +640,9 @@ namespace hospital_api.Controllers
         [HttpGet("2-step-authorization/{id}")]
         [Authorize]
         
-        public async Task<IActionResult> TwostepAuthentication(string Id)
+        public async Task<IActionResult> TwostepAuthentication(string id)
         {
-             var user =await userManager.FindByIdAsync(Id);
+             var user =await userManager.FindByIdAsync(id);
              if (user == null)
               {
                  return NotFound("user not found");

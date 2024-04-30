@@ -55,7 +55,7 @@ builder.Services.AddCors(options =>
 //configure identity
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
 {
-    options.TokenLifespan = TimeSpan.FromMinutes(30);
+    options.TokenLifespan = TimeSpan.FromMinutes(60);
 });
 
 
